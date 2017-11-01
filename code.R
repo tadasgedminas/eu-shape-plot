@@ -7,6 +7,12 @@ library(plyr)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(rgdal)
+library(maptools)
+library(rgeos)
+library(stringr)
+library(mapproj)
+
 
 #### Functions ####
 
@@ -23,3 +29,14 @@ data_energy[data_energy$cnt_name == "EL", "cnt_name"] <- "GR" # Renaming Greece 
 data_energy[data_energy$cnt_name == "UK", "cnt_name"] <- "GB" # Renaming UK country code
 
 data_energy$cnt_full_name <- countrycode(data_energy$cnt_name, "iso2c", "country.name") # Adding full country names
+
+data_map <- merge_eurostat_geodata(data_energy, all_regions = T) # Retrieving data for mapping
+data_map <- filter(data_map, time == 2015) # Filtering to plot only one year
+
+### First attempt at making the map
+energy_map <- ggplot(data = data_map, aes(long, lat, group = group)) + 
+  geom_polygon(data = data_map, aes(long, lat),fill = NA, colour= "white", size = 1) + 
+  coord_map(project="orthographic", xlim=c(-22,34), ylim=c(35,70)) + 
+  geom_polygon(aes(fill = values),colour="dim grey",size=.2)
+
+energy_map
