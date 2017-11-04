@@ -1,4 +1,6 @@
 #### Pre-amble ####
+rm(list = ls())
+setwd("C:/Users/gedmi/Desktop/Personal/Projects/EU - Size Map/eu-shape-plot")
 
 #### Libraries ####
 library(eurostat)
@@ -38,40 +40,49 @@ data_map2 <- merge_eurostat_geodata(data_energy_map, all_regions = T, resolution
 data_map <- merge_eurostat_geodata(data_energy, all_regions = T, resolution = 20) # Retrieving data for mapping
 data_map <- filter(data_map, time == 2015) # Filtering to plot only one year
 
-### First attempt at making the map
-energy_map <- ggplot(data = data_map, aes(long, lat, group = group)) + 
-  geom_polygon(data = data_map, aes(long, lat),fill = NA, colour= "white", size = 1) + 
-  coord_map(project="orthographic", xlim=c(-22,34), ylim=c(35,70)) + 
-  geom_polygon(aes(fill = values),colour="dim grey",size=.2) + theme_bw()
+### First attempt at making the map using eurostat package
+# energy_map <- ggplot(data = data_map, aes(long, lat, group = group)) + 
+#   geom_polygon(data = data_map, aes(long, lat),fill = NA, colour= "white", size = 1) + 
+#   coord_map(project="orthographic", xlim=c(-22,34), ylim=c(35,70)) + 
+#   geom_polygon(aes(fill = values),colour="dim grey",size=.2) + theme_bw()
+# 
+# energy_map
 
-energy_map
-
-test_map <-ggplot(data = data_map, aes(long, lat, group = group)) + 
-  geom_polygon(data = data_map, aes(long, lat), colour= "white", size = 1) + 
-  coord_map(project="orthographic", xlim=c(-22,34), ylim=c(35,70))
-
-test_map
-
+## Read data related to land mapping coast-lines and country-borders
 wmap <- readOGR("Map data/ne_50m_land.shp", layer="ne_50m_land")
 countries <- readOGR("Map data/ne_50m_admin_0_countries.shp", layer="ne_50m_admin_0_countries")
 
+## Adjusting spatial data to more useful format + adjusting for projection
 wmap_laea<- spTransform(wmap, CRS("+proj=laea"))
 countries_laea<-spTransform(countries, CRS("+proj=laea"))
 
+## Selecting data on country shape polygons
 cnt_map_data <- countries@polygons
 
+## Selecting additonal identification data on each country
 side_data <- countries@data
+
+## Selecting all countries that are in the sample
 eu <- unique(data_energy$cnt_full_name)
+
+## Additional ID for each country
 side_data$ider <- 1:nrow(side_data)
+
+## Selecting identifiers for relevant country polygons
 cnt_ids <- side_data %>%
   filter(geounit %in% eu) %>%
   select(ider, geounit)
 
+## Renaming columns for merging
 colnames(data_energy_map)[ncol(data_energy_map)] <- "geounit"
+
+## Adding to country identifiers actual data
 cnt_ids_comb <- merge(cnt_ids, data_energy_map, by = "geounit")
 cnt_ids_comb$id <- cnt_ids_comb$ider - 1
 cnt_ids_comb <- select(cnt_ids_comb, -geounit, -ider)
 
+
+## Loop for selecting relevant 
 cnt_ids$lat <- NA
 cnt_ids$long <- NA
 
@@ -80,9 +91,7 @@ for (i in 1:nrow(cnt_ids)){
   cnt_ids[i, "long"] <- cnt_map_data[[cnt_ids[i, "ider"]]]@labpt[1]
 }
 
-
-loc <- cnt_ids
-
+## Loop for celecting centroids of each country polygon
 placeh <- list()
 n <- 1
 
@@ -95,42 +104,34 @@ for (j in 1:nrow(cnt_ids)) {
   }
 }
 
+## Combining the selected data to a data.frame
 poly_centers <- as.data.frame(do.call(rbind, placeh))
 colnames(poly_centers) <- c("c.long", "c.lat", "id", "piece")
 
-loc2 <- poly_centers
-coordinates(loc2) <- c("c.long", "c.lat")
-proj4string(loc2) <- CRS("+proj=longlat")
-loc_laea2 <-spTransform(loc2, CRS("+proj=laea"))
-
-
-coordinates(loc) <- c("long", "lat")
+## Applying transformation for translating "lat" and "long" to points on a plot
+loc <- poly_centers
+coordinates(loc) <- c("c.long", "c.lat")
 proj4string(loc) <- CRS("+proj=longlat")
 loc_laea <-spTransform(loc, CRS("+proj=laea"))
 
-wmap_df<-fortify(wmap)
-countries_df<-fortify(countries)
-loc_df<-data.frame(loc)
-
+## Tranforming spatial object of land and country data to a data frame
 wmap_laea_df<-fortify(wmap_laea)
 countries_laea_df<-fortify(countries_laea)
-loc_laea_df<-data.frame(loc_laea)
-loc_laea_df2 <- data.frame(loc_laea2)
+loc_laea_df <- data.frame(loc_laea)
 
-comb <- merge(countries_laea_df, loc_laea_df2, by = c("piece", "id"))
+## Combining data values and adjusting polygons points for re-drawing smaller country polygons
+comb <- merge(countries_laea_df, loc_laea_df, by = c("piece", "id"))
 comb <- arrange(comb, id, piece, order)
 comb <- merge(comb, cnt_ids_comb, by = "id")
+
+## New coordinates of polygons based on data values. Note the adjustment necessary with sqrt since we are shrinking a 2-dimensional object
 comb <- mutate(comb, n.long = (long - c.long)*(sqrt(values/100)) + c.long,
                n.lat = (lat - c.lat)*(sqrt(values/100)) + c.lat)
 
-tester <- filter(countries_laea_df, id == 72)
-
-
+## Theme of map
 theme_opts<-list(theme(panel.grid.minor = element_blank(),
                        panel.grid.major = element_blank(),
                        panel.background = element_rect(fill = 'white', colour = NA),
-                       plot.background = element_rect(fill="light grey",
-                                                      size=1,linetype="solid",color="black"),
                        axis.line = element_blank(),
                        axis.text.x = element_blank(),
                        axis.text.y = element_blank(),
@@ -139,14 +140,15 @@ theme_opts<-list(theme(panel.grid.minor = element_blank(),
                        axis.title.y = element_blank(),
                        plot.title = element_text(size=22)))
 
-xmin<-min(loc_laea_df$long)
-xmax<-max(loc_laea_df$long)
-ymin<-min(loc_laea_df$lat)
-ymax<-max(loc_laea_df$lat)
-buff<-50000
+## Defining the values for finding an appropriate POV of the map
+xmin<- -730000
+xmax<- 3105000
+ymin<- 3940000
+ymax<- 7000000
+buff<-75000
 
-
-tt <- ggplot() +
+## Plotting the map
+map_eu <- ggplot() +
   geom_polygon(data=wmap_laea_df, aes(long,lat,group=group), fill="white")+
   geom_polygon(data=countries_laea_df, aes(long,lat, group=group), colour="white", fill = "grey") +
   geom_polygon(data=comb, aes(n.long,n.lat, group=group), fill="steelblue") +
@@ -156,5 +158,4 @@ tt <- ggplot() +
   theme(aspect.ratio=1)+
   theme_opts
 
-tt
-
+map_eu
