@@ -2,6 +2,8 @@
 rm(list = ls())
 setwd("C:/Users/gedmi/Desktop/Personal/Projects/EU - Size Map/eu-shape-plot")
 
+## Small test edit ##
+
 #### Libraries ####
 library(eurostat)
 library(countrycode)
